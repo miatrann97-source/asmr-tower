@@ -105,11 +105,14 @@
 
 <script>
 /* ============================================================
-   Tháp Kẹo Dẻo — Squishy Candy Tower v2 (bản mẫu)
+   Tháp Kẹo Dẻo — Squishy Candy Tower v2.1 (bounce)
    3D tower like the clip: pink checkered shaft, jelly slabs,
    butter stick, waffle, pink cylinder, blue blocks. The yellow
    squishy cat WALKS with little steps and HOPS up — it does
    not auto-bounce. Calm, slow, relaxing. No shake, no flash.
+   v2.1: platforms are damped springs — they squash and bounce
+   on landing (like the clip's soft jelly/butter), the cat
+   squashes deeper on landing and stretches on take-off.
    ============================================================ */
 </script>
 <script>/**
@@ -596,6 +599,12 @@ function removePlatformMesh(p) {
    bot fell 5 times in 30 s). Forgiving now: higher hop, longer coyote
    time, wider landing tolerance, tighter platform spacing, wider butter. */
 var GRAV = 15, HOP_V = 9.4, WALK_SPEED = 3.4, WALK_ACCEL = 26;
+/* Platform spring (v2.1 bounce): every platform is a damped spring.
+   On a real landing it gets a downward kick (sv = -SPR_IMPULSE) and
+   oscillates: scaleY dips ~19%, rebounds ~+9%, settles in ~0.6-0.7 s.
+   k=500 -> omega ~22 rad/s (period ~0.28 s); damping ratio ~0.25, so
+   2-3 bounces stay visible before it settles. */
+var SPR_K = 500, SPR_C = 11, SPR_IMPULSE = 7.0;
 var state = 'start';           // start | playing
 var player, platforms, camY, startY, maxHeight, best, falls, walkPhase, lastGround;
 var displayHeight = 0.5;       // height SHOWN: top of the platform the cat stands on
@@ -624,14 +633,14 @@ function makePlatform(y, prev, idx) {
                   (Math.random() < 0.5 ? -1 : 1) * (d / 2 - 0.45)]);
     }
   }
-  return { x: x, y: y, z: z, w: w, h: h, d: d, type: type, blues: blues, wob: 0, mesh: null, seqIdx: idx };
+  return { x: x, y: y, z: z, w: w, h: h, d: d, type: type, blues: blues, wob: 0, sq: 0, sv: 0, mesh: null, seqIdx: idx };
 }
 function reset() {
   if (platforms) for (var r = 0; r < platforms.length; r++) removePlatformMesh(platforms[r]);
   startY = 0;
-  player = { x: 0, y: 1.0, z: 0, vx: 0, vz: 0, vy: 0, grounded: null, squash: 0, moving: false, coyote: 0 };
+  player = { x: 0, y: 1.0, z: 0, vx: 0, vz: 0, vy: 0, grounded: null, squash: 0, stretch: 0, moving: false, coyote: 0 };
   platforms = [];
-  var ground = { x: 0, y: 0, z: 0, w: 9, h: 1.0, d: 8, type: 'waffle', blues: null, wob: 0, mesh: null, seqIdx: -1 };
+  var ground = { x: 0, y: 0, z: 0, w: 9, h: 1.0, d: 8, type: 'waffle', blues: null, wob: 0, sq: 0, sv: 0, mesh: null, seqIdx: -1 };
   platforms.push(ground);
   var y = 1.7, prev = ground;
   for (var i = 0; i < 40; i++) {
@@ -679,7 +688,8 @@ function tryHop() {
   player.vy = HOP_V;
   player.grounded = null;
   player.coyote = 0;
-  player.squash = 0.6;
+  player.stretch = 1; // take-off stretch (tall + narrow) — the old hop squash is gone
+  player.squash = 0;
   hopSound();
 }
 
@@ -754,7 +764,8 @@ function step(dt) {
     var land = null, landTop = -Infinity;
     for (var i = 0; i < platforms.length; i++) {
       var q = platforms[i];
-      var top = q.y + q.h;
+      // the top the cat actually meets: a squashing platform's top moves
+      var top = q.y + q.h * (1 + (q.sq || 0));
       if (Math.abs(player.x - q.x) <= q.w / 2 + 0.6 &&
           Math.abs(player.z - q.z) <= q.d / 2 + 0.6 &&
           prevFeet >= top - 0.05 && player.y <= top + 0.05 && top > landTop) {
@@ -762,14 +773,25 @@ function step(dt) {
       }
     }
     if (land) {
+      // Landing EFFECTS fire only on a REAL landing (the cat was airborne).
+      // Without this gate the block re-fires every frame while standing
+      // still — gravity pulls the feet ~0.004 below the top each frame, so
+      // the check keeps passing — which would re-kick the spring forever,
+      // re-spawn the star-burst and re-play the squish sound 60x a second,
+      // and keep the cat permanently squashed. (That was the shipped v2.0
+      // behaviour; the spring makes the gate mandatory.)
+      var wasAirborne = !player.grounded;
       player.y = landTop;
       player.vy = 0;
       player.grounded = land;
       lastGround = land;
-      player.squash = 1;
-      if (land.type === 'jelly') land.wob = 1;
-      burst(player.x, landTop + 0.2, player.z);
-      squishSound();
+      if (wasAirborne) {
+        player.squash = 1;
+        land.sq = 0; land.sv = -SPR_IMPULSE; // platform squash kick
+        if (land.type === 'jelly') land.wob = 1;
+        burst(player.x, landTop + 0.2, player.z);
+        squishSound();
+      }
     }
   }
   if (player.grounded) {
@@ -783,8 +805,27 @@ function step(dt) {
   }
   if (player.coyote > 0) player.coyote -= dt;
   if (player.squash > 0) player.squash = Math.max(0, player.squash - dt * 3.2);
+  if (player.stretch > 0) player.stretch = Math.max(0, player.stretch - dt * 3.0);
+  // platform springs: damped oscillation, snapped to rest when tiny
+  // (semi-implicit Euler; omega*dt stays well under 2 at the 0.05 s clamp)
+  for (var sp = 0; sp < platforms.length; sp++) {
+    var pl = platforms[sp];
+    if (pl.sq !== 0 || pl.sv !== 0) {
+      pl.sv += (-SPR_K * pl.sq - SPR_C * pl.sv) * dt;
+      pl.sq += pl.sv * dt;
+      if (!isFinite(pl.sq) || !isFinite(pl.sv) ||
+          (Math.abs(pl.sq) < 0.001 && Math.abs(pl.sv) < 0.01)) { pl.sq = 0; pl.sv = 0; }
+    }
+  }
+  // the cat rides its platform: while standing, the feet follow the
+  // squashing top down and back up again (never floats, never sinks in)
+  if (player.grounded) {
+    var gg = player.grounded;
+    player.y = gg.y + gg.h * (1 + (gg.sq || 0));
+  }
   for (var w = 0; w < platforms.length; w++) {
-    if (platforms[w].wob > 0) platforms[w].wob = Math.max(0, platforms[w].wob - dt * 1.8);
+    // jelly wobble lasts ~0.9 s now (was ~0.55 s): slow and soft, after the spring
+    if (platforms[w].wob > 0) platforms[w].wob = Math.max(0, platforms[w].wob - dt * 1.1);
   }
   // height: ONLY the top of the platform the cat stands on — never the
   // hop peak. While airborne or falling the shown number holds the last
@@ -840,20 +881,29 @@ function render(dt) {
   if (!renderer) return;
   var px = player.x, py = player.y, pz = player.z;
   // cat squash & wobble (little steps + landing squish, like the clip)
-  var sq = player.squash;
+  var sq = player.squash, st = player.stretch || 0;
   var wob = player.moving ? Math.sin(walkPhase) * 0.07 : Math.sin(performance.now() / 600) * 0.02;
   var bob = player.grounded ? Math.sin(performance.now() / 500) * 0.03 : 0;
   catSprite.position.set(px, py + bob, pz);
-  catSprite.scale.set(1.9 * (1 + sq * 0.22), 2.2 * (1 - sq * 0.28), 1);
+  // landing squash is deeper now (0.28/0.34) and the hop take-off stretches
+  // the cat tall + narrow — cat and platform bounce together
+  catSprite.scale.set(1.9 * (1 + sq * 0.28 - st * 0.16), 2.2 * (1 - sq * 0.34 + st * 0.30), 1);
   catSprite.material.rotation = wob;
-  // jelly wobble
+  // platform bounce (v2.1): the spring drives the scale — Y compresses
+  // and the platform bulges out sideways (volume conserved, so the squash
+  // reads from the play camera, which looks down at a steep angle).
+  // Jelly adds a slow, soft secondary wobble on top of the spring.
   for (var i = 0; i < platforms.length; i++) {
     var p = platforms[i];
-    if (p.mesh && p.wob > 0) {
-      var w2 = Math.sin(p.wob * Math.PI) * 0.1;
-      p.mesh.scale.set(1 + w2, 1 - w2 * 0.7, 1 + w2);
-    } else if (p.mesh && p.mesh.scale.x !== 1) {
-      p.mesh.scale.set(1, 1, 1);
+    if (!p.mesh) continue;
+    var sqY = p.sq || 0;
+    var wobY = (p.type === 'jelly' && p.wob > 0) ? Math.sin(p.wob * Math.PI) * 0.06 : 0;
+    var sY = 1 + sqY + wobY;
+    var sXZ = 1 - sqY * 0.5 - wobY * 0.5;
+    if (Math.abs(sY - 1) < 0.0005 && Math.abs(sXZ - 1) < 0.0005) {
+      if (p.mesh.scale.x !== 1 || p.mesh.scale.y !== 1) p.mesh.scale.set(1, 1, 1);
+    } else {
+      p.mesh.scale.set(sXZ, sY, sXZ);
     }
   }
   // blob shadow follows the cat, fades as it hops higher
@@ -981,6 +1031,7 @@ window.__tower = {
   get best() { return best; },
   get falls() { return falls; },
   get sceneOK() { return sceneOK; },
+  get springParams() { return { k: SPR_K, c: SPR_C, impulse: SPR_IMPULSE }; },
   start: startGame, step: step, reset: reset, hop: tryHop,
   setKeys: function (k) { keys = k; }
 };
