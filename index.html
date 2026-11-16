@@ -279,27 +279,45 @@ waffleTex.wrapS = waffleTex.wrapT = THREE.RepeatWrapping;
    with letter tops to the left — exactly like the clip. (BoxGeometry +y
    face: canvas top = far end, canvas bottom = near end, so rotate(-90°)
    reads bottom -> top = near -> far.) */
-var butterTex = canvasTex(320, 640, function (g, w, h) {
+var butterTex = canvasTex(640, 1280, function (g, w, h) {
   var grad = g.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, '#ff5c7a'); grad.addColorStop(1, '#ff2e63');
   g.fillStyle = grad; g.fillRect(0, 0, w, h);
   g.fillStyle = 'rgba(255,255,255,0.20)';
-  g.fillRect(0, 26, w, 16); g.fillRect(0, h - 42, w, 16);
+  g.fillRect(0, 52, w, 32); g.fillRect(0, h - 84, w, 32);
   g.fillStyle = '#1b2a6b'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.save();
   g.translate(w / 2, h / 2);
   g.rotate(-Math.PI / 2);
   // after rotate(-90): local +x = canvas top (far), local +y = canvas right.
   // left column: SALTED (far) + BUTTER (near-centre); right column: 4 OZ. (near) + NET WT. (far)
-  g.font = 'bold 36px Arial, sans-serif';
-  g.fillText('SALTED', 200, -60);
-  g.font = 'bold 80px Arial, sans-serif';
-  g.fillText('BUTTER', -60, -60);
-  g.font = 'bold 50px Arial, sans-serif';
-  g.fillText('4 OZ.', -140, 65);
-  g.font = 'bold 30px Arial, sans-serif';
-  g.fillText('NET WT. (113 G)', 130, 65);
+  g.font = 'bold 72px Arial, sans-serif';
+  g.fillText('SALTED', 400, -120);
+  g.font = 'bold 160px Arial, sans-serif';
+  g.fillText('BUTTER', -120, -120);
+  g.font = 'bold 100px Arial, sans-serif';
+  g.fillText('4 OZ.', -280, 130);
+  g.font = 'bold 60px Arial, sans-serif';
+  g.fillText('NET WT. (113 G)', 260, 130);
   g.restore();
+});
+/* FRONT-face butter text — the fix that actually reads in play. The top
+   face is viewed at a steep angle from the play camera, so its lengthwise
+   text gets perspective-squashed and only "BUTTER" reads. The +Z face
+   (the near end of the stick) faces the camera almost head-on, so the
+   FULL text goes here, big and bold, reading left-to-right across the
+   screen: "SALTED BUTTER" + "4 OZ. · NET WT. (113 G)". */
+var butterFrontTex = canvasTex(1024, 384, function (g, w, h) {
+  var grad = g.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, '#ff5c7a'); grad.addColorStop(1, '#ff2e63');
+  g.fillStyle = grad; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(255,255,255,0.22)';
+  g.fillRect(0, 18, w, 14); g.fillRect(0, h - 32, w, 14);
+  g.fillStyle = '#1b2a6b'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = 'bold 104px Arial, sans-serif';
+  g.fillText('SALTED BUTTER', w / 2, 140);
+  g.font = 'bold 62px Arial, sans-serif';
+  g.fillText('4 OZ. · NET WT. (113 G)', w / 2, 285);
 });
 var jellyTex = canvasTex(256, 256, function (g, w, h) {
   g.fillStyle = '#ff9ec7'; g.fillRect(0, 0, w, h);
@@ -394,6 +412,27 @@ var sparkPool = [], petalPool = [], burstPool = [];
 var camPos = { x: 0, y: 7.4, z: 8.4 }, camLook = { x: 0, y: 1.2, z: -2.5 };
 function snap4(v) { return Math.round(v / 4) * 4; }
 
+/* Petals/sparkles must never cover the butter text: keep them out of a
+   box around every butter platform, extended toward the camera (+Z) so
+   nothing drifts across the line of sight to the front-face lettering. */
+function inButterZone(x, y, z) {
+  if (!platforms) return false;
+  for (var i = 0; i < platforms.length; i++) {
+    var p = platforms[i];
+    if (p.type !== 'butter') continue;
+    if (Math.abs(x - p.x) <= p.w / 2 + 1.2 &&
+        y >= p.y - 1 && y <= p.y + p.h + 4.5 &&
+        z >= p.z - p.d / 2 - 3 && z <= p.z + p.d / 2 + 1.2) return true;
+  }
+  return false;
+}
+function clearSpot(x, y, z, zLo, zHi) { // re-roll a position out of any butter zone
+  for (var tries = 0; tries < 8 && inButterZone(x, y, z); tries++) {
+    x = rand(-8, 8); z = rand(zLo, zHi);
+  }
+  return [x, y, z];
+}
+
 function initScene() {
   if (!HAS_THREE) return false;
   try {
@@ -405,6 +444,12 @@ function initScene() {
   renderer.setSize(420, 740);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputEncoding = THREE.sRGBEncoding;
+  // sharpen oblique textures (the butter text is viewed at a steep angle):
+  // max anisotropy keeps the lettering crisp instead of blurry
+  var maxAniso = renderer.capabilities.getMaxAnisotropy();
+  [butterTex, butterFrontTex, waffleTex, jellyTex, checkerTex, blueCandyTex].forEach(function (t) {
+    t.anisotropy = maxAniso; t.needsUpdate = true;
+  });
   document.getElementById('gl').appendChild(renderer.domElement);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xff9ec7);
@@ -450,7 +495,8 @@ function initScene() {
     var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTex, transparent: true, opacity: rand(0.4, 0.95), depthWrite: false }));
     var s = rand(0.22, 0.5);
     sp.scale.set(s, s, 1);
-    sp.position.set(rand(-8, 8), rand(0, 30), rand(-28, 6));
+    var spPos = clearSpot(rand(-8, 8), rand(0, 30), rand(-28, 6), -28, 6);
+    sp.position.set(spPos[0], spPos[1], spPos[2]);
     sp.userData.ph = rand(0, Math.PI * 2);
     scene.add(sp); sparkPool.push(sp);
   }
@@ -460,7 +506,8 @@ function initScene() {
     var pt = new THREE.Sprite(new THREE.SpriteMaterial({ map: petalTex, transparent: true, opacity: rand(0.8, 1.0), depthWrite: false }));
     var ps = rand(0.55, 0.95);
     pt.scale.set(ps, ps, 1);
-    pt.position.set(rand(-8, 8), rand(0, 30), rand(-22, 2));
+    var ptPos = clearSpot(rand(-8, 8), rand(0, 30), rand(-22, 2), -22, 2);
+    pt.position.set(ptPos[0], ptPos[1], ptPos[2]);
     pt.userData = { vy: rand(1.2, 2.0), sway: rand(0.6, 1.4), ph: rand(0, Math.PI * 2) };
     scene.add(pt); petalPool.push(pt);
   }
@@ -476,9 +523,10 @@ function platformMesh(p) {
   if (p.type === 'butter') {
     var side = new THREE.MeshLambertMaterial({ color: 0xff2e63 });
     var top = new THREE.MeshLambertMaterial({ map: butterTex });
+    var front = new THREE.MeshLambertMaterial({ map: butterFrontTex });
     var bot = new THREE.MeshLambertMaterial({ color: 0xd61e4e });
     var box = new THREE.Mesh(new THREE.BoxGeometry(p.w, p.h, p.d),
-      [side, side, top, bot, side, side]);
+      [side, side, top, bot, front, side]);
     box.position.y = p.h / 2;
     grp.add(box);
   } else if (p.type === 'jelly') {
@@ -543,9 +591,14 @@ function removePlatformMesh(p) {
 }
 
 /* ---------- game state (pure logic — runs even without WebGL) ---------- */
-var GRAV = 15, HOP_V = 8.6, WALK_SPEED = 3.4, WALK_ACCEL = 26;
+/* Climbability (fix round 2): the old numbers made hopping onto the next
+   platform genuinely hard to time (the live check failed 7/7, the CDP
+   bot fell 5 times in 30 s). Forgiving now: higher hop, longer coyote
+   time, wider landing tolerance, tighter platform spacing, wider butter. */
+var GRAV = 15, HOP_V = 9.4, WALK_SPEED = 3.4, WALK_ACCEL = 26;
 var state = 'start';           // start | playing
 var player, platforms, camY, startY, maxHeight, best, falls, walkPhase, lastGround;
+var displayHeight = 0.5;       // height SHOWN: top of the platform the cat stands on
 try { best = parseFloat(localStorage.getItem('asmrTowerBest')) || 0; } catch (e) { best = 0; }
 
 var SEQ = ['jelly', 'butter', 'jelly', 'cyl', 'jelly', 'waffle'];
@@ -554,13 +607,13 @@ function makePlatform(y, prev, idx) {
   var w, h, d;
   // the butter's long axis runs ALONG the tower (depth), like the clip —
   // its text reads along the stick, so it can never be cut by the frame edge
-  if (type === 'butter') { w = 3.4; h = 1.3; d = 6.8; }
+  if (type === 'butter') { w = 4.0; h = 1.3; d = 6.8; }
   else if (type === 'cyl') { w = 4.8; h = 1.3; d = 4.8; }
   else { w = 5.0; h = 1.0; d = 4.5; }
-  var x = clamp(prev.x + rand(-4, 4), -5, 5);
+  var x = clamp(prev.x + rand(-3, 3), -4.5, 4.5);
   // gap between platform edges, so long platforms (butter) never overlap
   // the next one and the cat never walks through a higher platform's side
-  var z = prev.z - (prev.d / 2 + d / 2 + rand(0.8, 1.6));
+  var z = prev.z - (prev.d / 2 + d / 2 + rand(0.6, 1.2));
   var blues = null;
   if (Math.random() < 0.45) {
     blues = [];
@@ -588,11 +641,15 @@ function reset() {
     y += rand(1.4, 1.8);
   }
   camY = 0; maxHeight = 0; falls = 0; walkPhase = 0;
+  displayHeight = 0.5; // ground platform top (1.0) * 0.5
   lastGround = ground;
   player.grounded = ground;
 }
 var toastTimer = null, toastUntil = 0;
 function showToast(msg) {
+  // the toast only ever shows during play, on a fall — never at start,
+  // never from a stale timer, never while the start screen is up
+  if (state !== 'playing') return;
   var t = document.getElementById('toast');
   t.textContent = msg;
   t.style.opacity = '1';
@@ -628,8 +685,16 @@ function tryHop() {
 
 /* ---------- input: walk with keys / drag, hop with Space / button ---------- */
 var keys = {};
+var keySeen = {}; // last keydown time per key: a quick tap still counts as held
+// for ~150 ms, so a short press is never lost between two animation frames
+function keyHeld(k) {
+  if (keys[k]) return true;
+  var t = keySeen[k];
+  return !!t && performance.now() - t < 150;
+}
 window.addEventListener('keydown', function (e) {
   keys[e.key] = true;
+  keySeen[e.key] = performance.now();
   if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'ArrowDown' ||
       e.key === 'ArrowLeft' || e.key === 'ArrowRight') e.preventDefault();
   if (e.key === ' ') tryHop();
@@ -659,10 +724,10 @@ function step(dt) {
   if (dt > 0.05) dt = 0.05;
   // steering: forward is -Z (up the tower), like the clip
   var ix = 0, iz = 0;
-  if (keys['ArrowLeft'] || keys['a'] || keys['A']) ix -= 1;
-  if (keys['ArrowRight'] || keys['d'] || keys['D']) ix += 1;
-  if (keys['ArrowUp'] || keys['w'] || keys['W']) iz -= 1;
-  if (keys['ArrowDown'] || keys['s'] || keys['S']) iz += 1;
+  if (keyHeld('ArrowLeft') || keyHeld('a') || keyHeld('A')) ix -= 1;
+  if (keyHeld('ArrowRight') || keyHeld('d') || keyHeld('D')) ix += 1;
+  if (keyHeld('ArrowUp') || keyHeld('w') || keyHeld('W')) iz -= 1;
+  if (keyHeld('ArrowDown') || keyHeld('s') || keyHeld('S')) iz += 1;
   if (dragging) { ix += dragDX; iz += dragDZ; }
   var len = Math.sqrt(ix * ix + iz * iz);
   if (len > 1) { ix /= len; iz /= len; }
@@ -690,8 +755,8 @@ function step(dt) {
     for (var i = 0; i < platforms.length; i++) {
       var q = platforms[i];
       var top = q.y + q.h;
-      if (Math.abs(player.x - q.x) <= q.w / 2 + 0.35 &&
-          Math.abs(player.z - q.z) <= q.d / 2 + 0.35 &&
+      if (Math.abs(player.x - q.x) <= q.w / 2 + 0.6 &&
+          Math.abs(player.z - q.z) <= q.d / 2 + 0.6 &&
           prevFeet >= top - 0.05 && player.y <= top + 0.05 && top > landTop) {
         land = q; landTop = top;
       }
@@ -710,9 +775,9 @@ function step(dt) {
   if (player.grounded) {
     // walk off an edge -> start falling (with a short coyote window to hop)
     var g = player.grounded;
-    if (Math.abs(player.x - g.x) > g.w / 2 + 0.3 || Math.abs(player.z - g.z) > g.d / 2 + 0.3) {
+    if (Math.abs(player.x - g.x) > g.w / 2 + 0.45 || Math.abs(player.z - g.z) > g.d / 2 + 0.45) {
       player.grounded = null;
-      player.coyote = 0.15;
+      player.coyote = 0.3;
       player.vy = 0;
     }
   }
@@ -721,12 +786,19 @@ function step(dt) {
   for (var w = 0; w < platforms.length; w++) {
     if (platforms[w].wob > 0) platforms[w].wob = Math.max(0, platforms[w].wob - dt * 1.8);
   }
-  // height
-  var hgt = Math.max(0, player.y * 0.5);
-  if (hgt > maxHeight) maxHeight = hgt;
-  if (maxHeight > best) {
-    best = maxHeight;
-    try { localStorage.setItem('asmrTowerBest', String(best)); } catch (e) {}
+  // height: ONLY the top of the platform the cat stands on — never the
+  // hop peak. While airborne or falling the shown number holds the last
+  // grounded value, so it cannot jump up mid-hop or drop to 0 mid-fall.
+  // The best height is likewise the highest platform stood on, not a hop.
+  if (player.grounded) {
+    displayHeight = (player.grounded.y + player.grounded.h) * 0.5;
+    if (displayHeight > maxHeight) {
+      maxHeight = displayHeight;
+      if (maxHeight > best) {
+        best = maxHeight;
+        try { localStorage.setItem('asmrTowerBest', String(best)); } catch (e) {}
+      }
+    }
   }
   // recycle platforms below, add new ones above (like the clip's endless tower)
   var highest = platforms[0];
@@ -797,14 +869,20 @@ function render(dt) {
   for (var s = 0; s < sparkPool.length; s++) {
     var sp = sparkPool[s];
     sp.material.opacity = 0.45 + 0.45 * Math.sin(t * 2 + sp.userData.ph);
-    if (sp.position.y < camY - 14) { sp.position.y = camY + rand(18, 26); sp.position.x = rand(-8, 8); sp.position.z = pz + rand(-24, 4); }
+    if (sp.position.y < camY - 14 || inButterZone(sp.position.x, sp.position.y, sp.position.z)) {
+      var nsp = clearSpot(rand(-8, 8), camY + rand(18, 26), pz + rand(-24, 4), pz - 24, pz + 4);
+      sp.position.set(nsp[0], nsp[1], nsp[2]);
+    }
   }
   for (var n = 0; n < petalPool.length; n++) {
     var pt = petalPool[n];
     pt.position.y -= pt.userData.vy * dt * 2;
     pt.position.x += Math.sin(t + pt.userData.ph) * pt.userData.sway * dt;
     pt.material.rotation += dt * 0.5;
-    if (pt.position.y < camY - 14) { pt.position.y = camY + rand(18, 26); pt.position.x = rand(-8, 8); pt.position.z = pz + rand(-22, 2); }
+    if (pt.position.y < camY - 14 || inButterZone(pt.position.x, pt.position.y, pt.position.z)) {
+      var npt = clearSpot(rand(-8, 8), camY + rand(18, 26), pz + rand(-22, 2), pz - 22, pz + 2);
+      pt.position.set(npt[0], npt[1], npt[2]);
+    }
   }
   for (var b = burstPool.length - 1; b >= 0; b--) {
     var bs = burstPool[b];
@@ -835,12 +913,9 @@ function render(dt) {
 
 /* ---------- HUD / flow ---------- */
 function updateHUD() {
-  // the big number is the CURRENT height — the platform the cat stands on
-  // (or its height mid-hop) — so it updates the moment it lands, instead
-  // of only showing the best peak reached so far
-  var cur = player.grounded ? (player.grounded.y + player.grounded.h) * 0.5
-                            : Math.max(0, player.y * 0.5);
-  document.getElementById('heightNow').textContent = cur.toFixed(1);
+  // the big number is the height of the platform the cat STANDS on
+  // (displayHeight, held while hopping/falling) — never the hop peak
+  document.getElementById('heightNow').textContent = displayHeight.toFixed(1);
   document.getElementById('bestBox').textContent =
     'Kỷ lục: ' + best.toFixed(1) + ' m · Best: ' + best.toFixed(1) + ' m';
   var pct = clamp(maxHeight / 40 * 100, 0, 100);
@@ -852,6 +927,10 @@ function startGame() {
   if (scene) { // rebuild meshes for the fresh platform list
     buildPlatformMeshes();
   }
+  // the fall toast must never be visible at start (or stuck from a previous run)
+  var toastEl = document.getElementById('toast');
+  toastEl.style.opacity = '0';
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
   state = 'playing';
   document.getElementById('startScreen').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
@@ -898,6 +977,7 @@ window.__tower = {
   get platforms() { return platforms; },
   get camY() { return camY; },
   get maxHeight() { return maxHeight; },
+  get displayHeight() { return displayHeight; },
   get best() { return best; },
   get falls() { return falls; },
   get sceneOK() { return sceneOK; },
