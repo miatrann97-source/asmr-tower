@@ -58,8 +58,10 @@
   .iconbtn { pointer-events:auto; font-family:inherit; font-size:19px; line-height:1;
     background:rgba(255,255,255,.8); border:none; border-radius:50%; width:42px; height:42px;
     cursor:pointer; box-shadow:0 2px 8px rgba(190,90,140,.25); }
-  #hint { position:absolute; left:0; right:0; bottom:16px; text-align:center; z-index:4;
-    font-size:13px; color:#c97ba6; pointer-events:none; text-shadow:0 1px 0 #fff; }
+  #hint { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:4;
+    font-size:13px; line-height:1.4; color:#fff; background:rgba(163,74,122,.88);
+    padding:6px 14px; border-radius:999px; pointer-events:none; text-align:center;
+    width:max-content; max-width:92%; box-shadow:0 2px 8px rgba(190,90,140,.3); }
   #hopBtn { position:absolute; right:16px; bottom:44px; z-index:4; font-family:inherit;
     font-size:18px; font-weight:700; color:#fff; background:linear-gradient(180deg,#ff8fbe,#f0629a);
     border:none; border-radius:999px; padding:14px 22px; cursor:pointer;
@@ -270,21 +272,34 @@ var waffleTex = canvasTex(256, 256, function (g, w, h) {
   g.fillRect(0, 0, w, 26);
 });
 waffleTex.wrapS = waffleTex.wrapT = THREE.RepeatWrapping;
-var butterTex = canvasTex(512, 320, function (g, w, h) {
+/* Butter wrapper — HOT PINK, like the clip (frames 05/10/14/30: the clip's
+   butter is a hot-pink/magenta wrapper with dark navy-blue text, NOT
+   yellow/cream). Portrait texture: the stick's long axis runs ALONG the
+   tower (depth), and the text runs along the stick reading near -> far
+   with letter tops to the left — exactly like the clip. (BoxGeometry +y
+   face: canvas top = far end, canvas bottom = near end, so rotate(-90°)
+   reads bottom -> top = near -> far.) */
+var butterTex = canvasTex(320, 640, function (g, w, h) {
   var grad = g.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, '#ff5c7a'); grad.addColorStop(1, '#ff2e63');
   g.fillStyle = grad; g.fillRect(0, 0, w, h);
-  g.fillStyle = 'rgba(255,255,255,0.16)';
-  g.fillRect(0, 0, w, 34); g.fillRect(0, h - 30, w, 30);
+  g.fillStyle = 'rgba(255,255,255,0.20)';
+  g.fillRect(0, 26, w, 16); g.fillRect(0, h - 42, w, 16);
   g.fillStyle = '#1b2a6b'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.font = 'bold 44px Arial, sans-serif';
-  g.fillText('SALTED', w / 2, 78);
-  g.font = 'bold 96px Arial, sans-serif';
-  g.fillText('BUTTER', w / 2, 168);
-  g.font = 'bold 52px Arial, sans-serif';
-  g.fillText('4 OZ.', w / 2, 252);
-  g.font = 'bold 34px Arial, sans-serif';
-  g.fillText('NET WT. (113 G)', w / 2, 296);
+  g.save();
+  g.translate(w / 2, h / 2);
+  g.rotate(-Math.PI / 2);
+  // after rotate(-90): local +x = canvas top (far), local +y = canvas right.
+  // left column: SALTED (far) + BUTTER (near-centre); right column: 4 OZ. (near) + NET WT. (far)
+  g.font = 'bold 36px Arial, sans-serif';
+  g.fillText('SALTED', 200, -60);
+  g.font = 'bold 80px Arial, sans-serif';
+  g.fillText('BUTTER', -60, -60);
+  g.font = 'bold 50px Arial, sans-serif';
+  g.fillText('4 OZ.', -140, 65);
+  g.font = 'bold 30px Arial, sans-serif';
+  g.fillText('NET WT. (113 G)', 130, 65);
+  g.restore();
 });
 var jellyTex = canvasTex(256, 256, function (g, w, h) {
   g.fillStyle = '#ff9ec7'; g.fillRect(0, 0, w, h);
@@ -312,6 +327,31 @@ var jellyTex = canvasTex(256, 256, function (g, w, h) {
   g.fillStyle = 'rgba(255,255,255,0.4)';
   g.fillRect(0, 0, w, 26);
 });
+var blueCandyTex = canvasTex(128, 128, function (g, w, h) {
+  // glossy blue candy block: deep-blue gradient, gloss highlight,
+  // colourful sprinkles + a white sparkle — reads as candy, never a plain box
+  var grad = g.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, '#4a6bff'); grad.addColorStop(0.5, '#1e30b0'); grad.addColorStop(1, '#141f78');
+  g.fillStyle = grad; g.fillRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(10,16,80,0.55)'; g.lineWidth = 10;
+  g.strokeRect(5, 5, w - 10, h - 10);
+  g.fillStyle = 'rgba(255,255,255,0.38)';
+  g.beginPath(); g.ellipse(40, 34, 34, 17, -0.5, 0, Math.PI * 2); g.fill();
+  var cols = ['#ff8fb8', '#ffd60a', '#ffffff', '#7dffb0', '#ff9ec7'];
+  for (var i = 0; i < 16; i++) {
+    g.strokeStyle = cols[i % cols.length]; g.lineWidth = 5; g.lineCap = 'round';
+    var sx = 16 + Math.random() * (w - 32), sy = 16 + Math.random() * (h - 32);
+    var a = Math.random() * Math.PI;
+    g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx + Math.cos(a) * 12, sy + Math.sin(a) * 12); g.stroke();
+  }
+  g.fillStyle = '#ffffff';
+  g.beginPath();
+  for (var k = 0; k < 8; k++) {
+    var a2 = -Math.PI / 2 + k * Math.PI / 4, rr2 = (k % 2 === 0) ? 11 : 4.5;
+    g[k === 0 ? 'moveTo' : 'lineTo'](96 + Math.cos(a2) * rr2, 92 + Math.sin(a2) * rr2);
+  }
+  g.closePath(); g.fill();
+});
 var starTex = canvasTex(64, 64, function (g, w, h) {
   g.clearRect(0, 0, w, h);
   g.fillStyle = '#ffffff';
@@ -323,11 +363,22 @@ var starTex = canvasTex(64, 64, function (g, w, h) {
   g.closePath(); g.fill();
 });
 var petalTex = canvasTex(64, 64, function (g, w, h) {
+  // cherry-blossom: a real 5-petal sakura in vivid pink with a darker
+  // outline + pale centre — distinct from the white sparkles and from
+  // the pink background, so it reads as a petal at a glance
   g.clearRect(0, 0, w, h);
-  g.fillStyle = '#ffb3d1';
-  g.beginPath(); g.ellipse(32, 32, 22, 15, 0.6, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#ff7eb0';
+  g.strokeStyle = '#e85a9b'; g.lineWidth = 2.5;
+  for (var i = 0; i < 5; i++) {
+    var a = -Math.PI / 2 + i * (Math.PI * 2 / 5);
+    g.beginPath();
+    g.ellipse(32 + Math.cos(a) * 13, 32 + Math.sin(a) * 13, 12, 8, a, 0, Math.PI * 2);
+    g.fill(); g.stroke();
+  }
   g.fillStyle = '#ffd1e8';
-  g.beginPath(); g.ellipse(32, 32, 12, 8, 0.6, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(32, 32, 6, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#e85a9b';
+  g.beginPath(); g.arc(32, 32, 2.5, 0, Math.PI * 2); g.fill();
 });
 var catBackTex = new THREE.TextureLoader().load(CAT_BACK);
 var catFrontTex = new THREE.TextureLoader().load(CAT_FRONT);
@@ -403,13 +454,14 @@ function initScene() {
     sp.userData.ph = rand(0, Math.PI * 2);
     scene.add(sp); sparkPool.push(sp);
   }
-  // cherry-blossom petals drifting down
-  for (var j = 0; j < 16; j++) {
-    var pt = new THREE.Sprite(new THREE.SpriteMaterial({ map: petalTex, transparent: true, opacity: rand(0.6, 0.95), depthWrite: false }));
-    var ps = rand(0.3, 0.55);
+  // cherry-blossom petals drifting down — big, vivid and numerous enough
+  // to actually notice (the old 16 small pale petals were invisible)
+  for (var j = 0; j < 34; j++) {
+    var pt = new THREE.Sprite(new THREE.SpriteMaterial({ map: petalTex, transparent: true, opacity: rand(0.8, 1.0), depthWrite: false }));
+    var ps = rand(0.55, 0.95);
     pt.scale.set(ps, ps, 1);
-    pt.position.set(rand(-8, 8), rand(0, 30), rand(-28, 6));
-    pt.userData = { vy: rand(0.25, 0.55), sway: rand(0.4, 1.0), ph: rand(0, Math.PI * 2) };
+    pt.position.set(rand(-8, 8), rand(0, 30), rand(-22, 2));
+    pt.userData = { vy: rand(1.2, 2.0), sway: rand(0.6, 1.4), ph: rand(0, Math.PI * 2) };
     scene.add(pt); petalPool.push(pt);
   }
   buildPlatformMeshes();
@@ -465,13 +517,14 @@ function platformMesh(p) {
     mb.position.y = p.h / 2;
     grp.add(mb);
   }
-  // small blue blocks on some platform edges (like the clip)
+  // small blue CANDY blocks on some platform edges (like the clip) —
+  // glossy blue candy with sprinkles, never plain placeholder boxes
   if (p.blues) {
     for (var b = 0; b < p.blues.length; b++) {
       var bb = p.blues[b];
-      var bm = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.85, 0.85),
-        new THREE.MeshLambertMaterial({ color: 0x1e30b0 }));
-      bm.position.set(bb[0], p.h + 0.42, bb[1]);
+      var bm = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.75, 0.75),
+        new THREE.MeshLambertMaterial({ map: blueCandyTex }));
+      bm.position.set(bb[0], p.h + 0.37, bb[1]);
       grp.add(bm);
     }
   }
@@ -496,22 +549,26 @@ var player, platforms, camY, startY, maxHeight, best, falls, walkPhase, lastGrou
 try { best = parseFloat(localStorage.getItem('asmrTowerBest')) || 0; } catch (e) { best = 0; }
 
 var SEQ = ['jelly', 'butter', 'jelly', 'cyl', 'jelly', 'waffle'];
-function makePlatform(y, prevX, prevZ, idx) {
+function makePlatform(y, prev, idx) {
   var type = SEQ[idx % SEQ.length];
   var w, h, d;
-  if (type === 'butter') { w = 6.5; h = 1.3; d = 3.2; }
+  // the butter's long axis runs ALONG the tower (depth), like the clip —
+  // its text reads along the stick, so it can never be cut by the frame edge
+  if (type === 'butter') { w = 3.4; h = 1.3; d = 6.8; }
   else if (type === 'cyl') { w = 4.8; h = 1.3; d = 4.8; }
   else { w = 5.0; h = 1.0; d = 4.5; }
-  var x = clamp(prevX + rand(-4, 4), -5, 5);
-  var z = prevZ - rand(3.2, 4.6);
+  var x = clamp(prev.x + rand(-4, 4), -5, 5);
+  // gap between platform edges, so long platforms (butter) never overlap
+  // the next one and the cat never walks through a higher platform's side
+  var z = prev.z - (prev.d / 2 + d / 2 + rand(0.8, 1.6));
   var blues = null;
   if (Math.random() < 0.45) {
     blues = [];
     var n = 1 + Math.floor(Math.random() * 2);
     for (var b = 0; b < n; b++) {
       // corners only — never on the butter text or in the cat's way
-      blues.push([(Math.random() < 0.5 ? -1 : 1) * (w / 2 - 0.6),
-                  (Math.random() < 0.5 ? -1 : 1) * (d / 2 - 0.5)]);
+      blues.push([(Math.random() < 0.5 ? -1 : 1) * (w / 2 - 0.5),
+                  (Math.random() < 0.5 ? -1 : 1) * (d / 2 - 0.45)]);
     }
   }
   return { x: x, y: y, z: z, w: w, h: h, d: d, type: type, blues: blues, wob: 0, mesh: null, seqIdx: idx };
@@ -523,26 +580,36 @@ function reset() {
   platforms = [];
   var ground = { x: 0, y: 0, z: 0, w: 9, h: 1.0, d: 8, type: 'waffle', blues: null, wob: 0, mesh: null, seqIdx: -1 };
   platforms.push(ground);
-  var y = 1.7, px = 0, pz = 0;
+  var y = 1.7, prev = ground;
   for (var i = 0; i < 40; i++) {
-    var p = makePlatform(y, px, pz, i);
+    var p = makePlatform(y, prev, i);
     platforms.push(p);
-    px = p.x; pz = p.z;
+    prev = p;
     y += rand(1.4, 1.8);
   }
   camY = 0; maxHeight = 0; falls = 0; walkPhase = 0;
   lastGround = ground;
   player.grounded = ground;
 }
+var toastTimer = null, toastUntil = 0;
 function showToast(msg) {
   var t = document.getElementById('toast');
   t.textContent = msg;
   t.style.opacity = '1';
-  setTimeout(function () { t.style.opacity = '0'; }, 1800);
+  // auto-dismiss after ~2.5 s; a fresh toast restarts the timer, and the
+  // frame loop below is a failsafe so it can never stick on screen
+  toastUntil = performance.now() + 2500;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.style.opacity = '0'; toastTimer = null; }, 2500);
 }
 function respawn() {
   falls++;
   var g = lastGround || platforms[0];
+  if (platforms.indexOf(g) === -1) {
+    // lastGround was recycled away — fall back to the lowest live platform
+    g = platforms[0];
+    for (var i = 0; i < platforms.length; i++) if (platforms[i].y < g.y) g = platforms[i];
+  }
   player.x = g.x; player.z = g.z; player.y = g.y + g.h;
   player.vx = 0; player.vz = 0; player.vy = 0;
   player.grounded = g; player.squash = 0.5;
@@ -672,7 +739,7 @@ function step(dt) {
   }
   var idx = 0;
   while (highest.y < camY + 42) {
-    var np = makePlatform(highest.y + rand(1.4, 1.8), highest.x, highest.z, highest.seqIdx + 1);
+    var np = makePlatform(highest.y + rand(1.4, 1.8), highest, highest.seqIdx + 1);
     platforms.push(np);
     addPlatformMesh(np);
     highest = np;
@@ -737,7 +804,7 @@ function render(dt) {
     pt.position.y -= pt.userData.vy * dt * 2;
     pt.position.x += Math.sin(t + pt.userData.ph) * pt.userData.sway * dt;
     pt.material.rotation += dt * 0.5;
-    if (pt.position.y < camY - 14) { pt.position.y = camY + rand(18, 26); pt.position.x = rand(-8, 8); pt.position.z = pz + rand(-24, 4); }
+    if (pt.position.y < camY - 14) { pt.position.y = camY + rand(18, 26); pt.position.x = rand(-8, 8); pt.position.z = pz + rand(-22, 2); }
   }
   for (var b = burstPool.length - 1; b >= 0; b--) {
     var bs = burstPool[b];
@@ -768,7 +835,12 @@ function render(dt) {
 
 /* ---------- HUD / flow ---------- */
 function updateHUD() {
-  document.getElementById('heightNow').textContent = maxHeight.toFixed(1);
+  // the big number is the CURRENT height — the platform the cat stands on
+  // (or its height mid-hop) — so it updates the moment it lands, instead
+  // of only showing the best peak reached so far
+  var cur = player.grounded ? (player.grounded.y + player.grounded.h) * 0.5
+                            : Math.max(0, player.y * 0.5);
+  document.getElementById('heightNow').textContent = cur.toFixed(1);
   document.getElementById('bestBox').textContent =
     'Kỷ lục: ' + best.toFixed(1) + ' m · Best: ' + best.toFixed(1) + ' m';
   var pct = clamp(maxHeight / 40 * 100, 0, 100);
@@ -806,6 +878,11 @@ var sceneOK = initScene(); // initScene already builds the platform meshes
 function frame(t) {
   var dt = lastT ? (t - lastT) / 1000 : 0.016;
   lastT = t;
+  // toast failsafe: never let it stick on screen past its time
+  if (toastTimer && performance.now() > toastUntil) {
+    document.getElementById('toast').style.opacity = '0';
+    toastTimer = null;
+  }
   if (state === 'playing') { step(dt); render(dt); updateHUD(); }
   else { render(0.016); }
   requestAnimationFrame(frame);
